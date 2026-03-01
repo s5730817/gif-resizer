@@ -1,5 +1,3 @@
-Compile:
-gcc -Iinclude main.c src/gifdec.c src/gifenc.c -lm -o main
 
 ```markdown
 # gif-resizer
@@ -13,13 +11,17 @@ Behavior summary
 - If no output filename is given, the program writes to
 	`processed/<input-basename>-resized.gif` (the `processed/` directory is
 	created if needed).
-
+```
 Build
 -----
 Use the included `Makefile`:
 
 ```sh
 make
+```
+or compile with gcc:
+```
+gcc -Iinclude main.c src/gifdec.c src/gifenc.c -lm -o main
 ```
 
 This produces the executable `main` in the project root.
