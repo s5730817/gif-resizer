@@ -1,10 +1,9 @@
-
-```markdown
 # gif-resizer
 
 Small utility to resize GIFs using `stb_image_resize` together with the
 `gifdec`/`gifenc` helpers in `src/`.
 
+```markdown
 Behavior summary
 - If the input filename is given without a path, the program will look for it
 	in the `unprocessed/` folder.
