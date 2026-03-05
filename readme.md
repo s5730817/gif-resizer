@@ -1,25 +1,26 @@
-Compile:
-gcc -Iinclude main.c src/gifdec.c src/gifenc.c -lm -o main
-
-```markdown
 # gif-resizer
 
 Small utility to resize GIFs using `stb_image_resize` together with the
 `gifdec`/`gifenc` helpers in `src/`.
 
+```markdown
 Behavior summary
 - If the input filename is given without a path, the program will look for it
 	in the `unprocessed/` folder.
 - If no output filename is given, the program writes to
 	`processed/<input-basename>-resized.gif` (the `processed/` directory is
 	created if needed).
-
+```
 Build
 -----
 Use the included `Makefile`:
 
 ```sh
 make
+```
+or compile with gcc:
+```
+gcc -Iinclude main.c src/gifdec.c src/gifenc.c -lm -o main
 ```
 
 This produces the executable `main` in the project root.
