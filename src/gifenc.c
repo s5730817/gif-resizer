@@ -280,12 +280,36 @@ get_bbox(ge_GIF *gif, uint16_t *w, uint16_t *h, uint16_t *x, uint16_t *y)
 }
 
 static void
-add_graphics_control_extension(ge_GIF *gif, uint16_t d)
+add_graphics_control_extension(ge_GIF *gif, uint16_t d, int disposal)
 {
-    uint8_t flags = ((gif->bgindex >= 0 ? 2 : 1) << 2) + 1;
+    /* disposal: 0-7 per GIF spec; transparency bit = 1 if bgindex >=0 */
+    uint8_t flags = ((disposal & 7) << 2) | (gif->bgindex >= 0 ? 1 : 0);
     write(gif->fd, (uint8_t []) {'!', 0xF9, 0x04, flags}, 4);
     write_num(gif->fd, d);
     write(gif->fd, (uint8_t []) {(uint8_t) gif->bgindex, 0x00}, 2);
+}
+
+/* Add full frame (no bbox cropping) with optional disposal */
+void
+ge_add_frame_full(ge_GIF *gif, uint16_t delay, int disposal)
+{
+    uint16_t w = gif->w, h = gif->h;
+    uint16_t x = 0, y = 0;
+    uint8_t *tmp;
+
+    /* Emit graphics control even when delay is zero if we need to
+       specify disposal or transparency.  Without this, frames that have no
+       delay and no transparent index would fall back to disposal=0 in the
+       output file. */
+    if (delay || (gif->bgindex >= 0) || disposal != 0)
+        add_graphics_control_extension(gif, delay, disposal);
+    put_image(gif, w, h, x, y);
+    gif->nframes++;
+    if (gif->bgindex < 0) {
+        tmp = gif->back;
+        gif->back = gif->frame;
+        gif->frame = tmp;
+    }
 }
 
 void
@@ -295,7 +319,7 @@ ge_add_frame(ge_GIF *gif, uint16_t delay)
     uint8_t *tmp;
 
     if (delay || (gif->bgindex >= 0))
-        add_graphics_control_extension(gif, delay);
+        add_graphics_control_extension(gif, delay, 0);
     if (gif->nframes == 0) {
         w = gif->w;
         h = gif->h;

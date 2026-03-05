@@ -68,6 +68,22 @@ Notes
 - If you want different defaults, edit `main.c` or provide explicit
 	arguments.
 
+### How it handles GIFs
+
+Each frame is decoded by **gifdec** and rendered onto an internal canvas; this
+represents what a typical GIF player would show at that moment.  The program
+then resizes the *entire* canvas, so every frame in the output is a complete
+picture rather than a small “dirty” rectangle.  The encoder (`gifenc`) writes
+those frames with disposal method 2 (restore to background) because the image
+already contains all of the previous content – this makes the output
+playback predictable and avoids flickering/artefacts that occur when only the
+changed portion is written.
+
+Transparency is also preserved.  Since `gifenc` uses its `bgindex` field as
+the transparency index, the code temporarily overrides that value for each
+frame based on the source frame's transparent colour.  No extra palettes are
+needed; the original global palette is reused.
+
 Credit
 ---------
 GIFDEC: https://github.com/lecram/gifdec
