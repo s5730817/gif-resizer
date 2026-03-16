@@ -153,6 +153,7 @@ int main(int argc, char *argv[])
 		new_width = gif->width;
 	if (new_height <= 0)
 		new_height = gif->height;
+	printf("Resized dims: %ix%i\n", new_width, new_height);
 
 
 	/* ensure processed/ exists */
@@ -215,13 +216,17 @@ int main(int argc, char *argv[])
 		snprintf(out_path, n, "processed/%.*s-resized.gif", (int)dot, base);
 	}
 
+	/* Use no global bgindex so encoder keeps a back buffer and per-frame
+	   transparency can be signaled by setting bgindex per frame. */
 	ge_GIF *resized_gif = ge_new_gif(
 		out_path,
 		new_width, new_height,
 		gif->palette->colors,
 		8,
-		gif->bgindex,
+		-1,
 		0);
+
+
 
 	if (!resized_gif)
 	{
@@ -298,7 +303,8 @@ int main(int argc, char *argv[])
 		/* Map resized RGBA back to palette; respect alpha transparency by
 		   thresholding.  This avoids noisy semi‑transparent edges turning
 		   into arbitrary colours. */
-		for (int j = 0; j < new_width * new_height; j++)
+		size_t pixel_count = (size_t)new_width * new_height;
+		for (int j = 0; j < pixel_count; j++)
 		{
 			uint8_t a = resized_frame[j * 4 + 3];
 			if (gif->gce.transparency && a < 128) {

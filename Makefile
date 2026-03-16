@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Iinclude -O2 -Wall -Wextra
+CFLAGS = -Iinclude -g -O2 -Wall -Wextra
 LDFLAGS = -lm
 SRCS = main.c src/gifdec.c src/gifenc.c
 TARGET = main

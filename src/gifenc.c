@@ -90,7 +90,8 @@ ge_new_gif(
     int i, r, g, b, v;
     int store_gct, custom_gct;
     int nbuffers = bgindex < 0 ? 2 : 1;
-    ge_GIF *gif = calloc(1, sizeof(*gif) + nbuffers*width*height);
+    size_t alloc_size = sizeof(ge_GIF) + (size_t)nbuffers*width*height;
+    ge_GIF *gif = calloc(1, alloc_size);
     if (!gif)
         goto no_gif;
     gif->w = width; gif->h = height;

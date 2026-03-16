@@ -24,6 +24,7 @@ ge_GIF *ge_new_gif(
     uint8_t *palette, int depth, int bgindex, int loop
 );
 void ge_add_frame(ge_GIF *gif, uint16_t delay);
+void ge_add_frame_full(ge_GIF *gif, uint16_t delay, int disposal);
 void ge_close_gif(ge_GIF* gif);
 
 #ifdef __cplusplus
