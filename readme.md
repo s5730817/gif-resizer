@@ -39,8 +39,7 @@ Options:
 - `-H height`   new height (default: input height)
 - `-o outfile`  output filename (if no path is given, it will be placed in
 								 `processed/`)
-- `--help`      show help
-
+- `-c mode`     recolor mode: none, rgb332, rgb565 (default: none)
 Examples:
 
 ```sh

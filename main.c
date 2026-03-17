@@ -14,6 +14,47 @@
 #include "gifdec.h"
 #include "gifenc.h"
 
+typedef enum {
+	RECOLOR_NONE = 0,
+	RECOLOR_RGB332,
+	RECOLOR_RGB565,
+} recolor_mode_t;
+
+uint16_t rgb24_to_rgb565(uint8_t r, uint8_t g, uint8_t b)
+{
+	uint16_t r5 = (r * 31) / 255;
+	uint16_t g6 = (g * 63) / 255;
+	uint16_t b5 = (b * 31) / 255;
+	return (r5 << 11) | (g6 << 5) | b5;
+}
+
+void recolor_rgba(uint8_t *rgba, int pixel_count, recolor_mode_t mode)
+{
+	if (mode == RECOLOR_NONE || !rgba)
+		return;
+	for (int i = 0; i < pixel_count; i++) {
+		uint8_t *p = rgba + i * 4;
+		if (p[3] == 0)
+			continue;
+		if (mode == RECOLOR_RGB332) {
+			uint8_t r3 = (p[0] * 7) / 255;
+			uint8_t g3 = (p[1] * 7) / 255;
+			uint8_t b2 = (p[2] * 3) / 255;
+			p[0] = (r3 * 255) / 7;
+			p[1] = (g3 * 255) / 7;
+			p[2] = (b2 * 255) / 3;
+		} else {
+			uint16_t v = rgb24_to_rgb565(p[0], p[1], p[2]);
+			uint8_t r5 = (v >> 11) & 0x1F;
+			uint8_t g6 = (v >> 5) & 0x3F;
+			uint8_t b5 = v & 0x1F;
+			p[0] = (r5 * 255) / 31;
+			p[1] = (g6 * 255) / 63;
+			p[2] = (b5 * 255) / 31;
+		}
+	}
+}
+
 /*
  * find_closest_color
  * ------------------
@@ -23,8 +64,17 @@
  * Clamp very dark colors to pure black to avoid palette corruption.
  */
 
+uint8_t rgb24_to_rgb8(uint8_t r, uint8_t g, uint8_t b)
+{
+	// R: 3 bits, G: 3 bits, B: 2 bits
+	uint8_t r3 = (r * 7) / 255;
+	uint8_t g3 = (g * 7) / 255;
+	uint8_t b2 = (b * 3) / 255;
+	return (r3 << 5) | (g3 << 2) | b2;
+}
+
 uint8_t find_closest_color(uint8_t r, uint8_t g, uint8_t b, uint8_t *palette,
-			   int palette_size)
+						   int palette_size)
 {
 	uint8_t best_index = 0;
 	int best_distance = INT_MAX;
@@ -59,6 +109,7 @@ static void usage(const char *prog)
 			"  -W width    new width (default: input width)\n"
 			"  -H height   new height (default: input height)\n"
 			"  -o outfile  output filename (default: processed/resized.gif)\n"
+			"  -c mode     recolor mode: none, rgb332, rgb565 (default: none)\n"
 			"  --help      show this help\n",
 			prog);
 }
@@ -71,6 +122,7 @@ int main(int argc, char *argv[])
 	int new_height = 0;
 	char *filename_in = NULL;
 	char *filename_out = NULL;
+	recolor_mode_t recolor_mode = RECOLOR_NONE;
 
 	if (argc < 2)
 	{
@@ -87,7 +139,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	while ((opt = getopt(argc, argv, "W:H:o:")) != -1)
+	while ((opt = getopt(argc, argv, "W:H:o:c:")) != -1)
 	{
 		switch (opt)
 		{
@@ -99,6 +151,19 @@ int main(int argc, char *argv[])
 			break;
 		case 'o':
 			filename_out = optarg;
+			break;
+		case 'c':
+			if (strcmp(optarg, "none") == 0)
+				recolor_mode = RECOLOR_NONE;
+			else if (strcmp(optarg, "rgb332") == 0)
+				recolor_mode = RECOLOR_RGB332;
+			else if (strcmp(optarg, "rgb565") == 0)
+				recolor_mode = RECOLOR_RGB565;
+			else {
+				fprintf(stderr, "Unknown recolor mode '%s'\n", optarg);
+				usage(argv[0]);
+				return 1;
+			}
 			break;
 		default:
 			usage(argv[0]);
@@ -154,7 +219,6 @@ int main(int argc, char *argv[])
 	if (new_height <= 0)
 		new_height = gif->height;
 	printf("Resized dims: %ix%i\n", new_width, new_height);
-
 
 	/* ensure processed/ exists */
 	if (mkdir("processed", 0755) == -1 && errno != EEXIST)
@@ -226,8 +290,6 @@ int main(int argc, char *argv[])
 		-1,
 		0);
 
-
-
 	if (!resized_gif)
 	{
 		fprintf(stderr, "Failed to create output GIF '%s'\n", out_path ? out_path : "(null)");
@@ -253,14 +315,16 @@ int main(int argc, char *argv[])
 		   and gives us a self‑contained RGB snapshot of what a viewer would see.
 		   We then convert that to RGBA so resizing still works with alpha. */
 		uint8_t *rgb_canvas = malloc(gif->width * gif->height * 3);
-		if (!rgb_canvas) {
+		if (!rgb_canvas)
+		{
 			fprintf(stderr, "Failed to allocate memory for canvas buffer\n");
 			break;
 		}
 		gd_render_frame(gif, rgb_canvas);
 
 		rgba_buffer = malloc(gif->width * gif->height * 4);
-		if (!rgba_buffer) {
+		if (!rgba_buffer)
+		{
 			fprintf(stderr, "Failed to allocate memory for frame buffer\n");
 			free(rgb_canvas);
 			break;
@@ -269,20 +333,25 @@ int main(int argc, char *argv[])
 		/* Copy RGB -> RGBA and optionally carry over the current frame's
 		   transparency mask (previous frames are merged into the canvas so
 		   their transparency information is lost). */
-		for (int j = 0; j < gif->width * gif->height; j++) {
-			rgba_buffer[j*4 + 0] = rgb_canvas[j*3 + 0];
-			rgba_buffer[j*4 + 1] = rgb_canvas[j*3 + 1];
-			rgba_buffer[j*4 + 2] = rgb_canvas[j*3 + 2];
+		for (int j = 0; j < gif->width * gif->height; j++)
+		{
+			rgba_buffer[j * 4 + 0] = rgb_canvas[j * 3 + 0];
+			rgba_buffer[j * 4 + 1] = rgb_canvas[j * 3 + 1];
+			rgba_buffer[j * 4 + 2] = rgb_canvas[j * 3 + 2];
 			if (gif->gce.transparency &&
-			    rgb_canvas[j*3+0] == gif->palette->colors[gif->gce.tindex*3 + 0] &&
-			    rgb_canvas[j*3+1] == gif->palette->colors[gif->gce.tindex*3 + 1] &&
-			    rgb_canvas[j*3+2] == gif->palette->colors[gif->gce.tindex*3 + 2]) {
-				rgba_buffer[j*4 + 3] = 0;
-			} else {
-				rgba_buffer[j*4 + 3] = 255;
+				rgb_canvas[j * 3 + 0] == gif->palette->colors[gif->gce.tindex * 3 + 0] &&
+				rgb_canvas[j * 3 + 1] == gif->palette->colors[gif->gce.tindex * 3 + 1] &&
+				rgb_canvas[j * 3 + 2] == gif->palette->colors[gif->gce.tindex * 3 + 2])
+			{
+				rgba_buffer[j * 4 + 3] = 0;
+			}
+			else
+			{
+				rgba_buffer[j * 4 + 3] = 255;
 			}
 		}
 		free(rgb_canvas);
+		recolor_rgba(rgba_buffer, gif->width * gif->height, recolor_mode);
 		resized_frame = malloc(new_width * new_height * 4);
 		if (!resized_frame)
 		{
@@ -296,9 +365,9 @@ int main(int argc, char *argv[])
 		stbir_resize_uint8(rgba_buffer, gif->width, gif->height, input_stride,
 						   resized_frame, new_width, new_height, output_stride, 4);
 
-/* gfx control extensions (including transparency) are encoded
-		   via the gifenc library's bgindex field.  Temporarily set it to the
-		   current frame's transparent color index (if any) when adding the frame. */
+		/* gfx control extensions (including transparency) are encoded
+				   via the gifenc library's bgindex field.  Temporarily set it to the
+				   current frame's transparent color index (if any) when adding the frame. */
 
 		/* Map resized RGBA back to palette; respect alpha transparency by
 		   thresholding.  This avoids noisy semi‑transparent edges turning
@@ -307,7 +376,8 @@ int main(int argc, char *argv[])
 		for (int j = 0; j < pixel_count; j++)
 		{
 			uint8_t a = resized_frame[j * 4 + 3];
-			if (gif->gce.transparency && a < 128) {
+			if (gif->gce.transparency && a < 128)
+			{
 				// treat as transparent pixel
 				resized_gif->frame[j] = gif->gce.tindex;
 				continue;
@@ -315,8 +385,9 @@ int main(int argc, char *argv[])
 			uint8_t r = resized_frame[j * 4];
 			uint8_t g = resized_frame[j * 4 + 1];
 			uint8_t b = resized_frame[j * 4 + 2];
+
 			uint8_t palette_index = find_closest_color(r, g, b, gif->palette->colors,
-				     gif->palette->size);
+													   gif->palette->size);
 			resized_gif->frame[j] = palette_index;
 		}
 
